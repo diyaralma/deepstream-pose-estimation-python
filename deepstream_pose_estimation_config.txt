@@ -1,0 +1,20 @@
+
+[property]
+gpu-id=0
+net-scale-factor=0.0174292
+offsets=123.675;116.28;103.53
+onnx-file=pose_estimation.onnx
+labelfile-path=labels.txt
+batch-size=1
+process-mode=1
+model-color-format=0
+## 0=FP32, 1=INT8, 2=FP16 mode
+network-mode=2
+num-detected-classes=4
+interval=0
+gie-unique-id=1
+model-engine-file=pose_estimation.onnx_b1_gpu0_fp16.engine
+output-tensor-meta=1
+network-type=100
+workspace-size=3000
+force-implicit-batch-dim=1
