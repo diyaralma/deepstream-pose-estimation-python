@@ -1,0 +1,4 @@
+# Python packages. The DeepStream Python bindings (pyds) and PyGObject (gi) are
+# installed with the DeepStream SDK: https://github.com/NVIDIA-AI-IOT/deepstream_python_apps
+numpy
+cuda-python

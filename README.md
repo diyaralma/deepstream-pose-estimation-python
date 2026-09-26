@@ -44,7 +44,7 @@ filesrc ─► h264parse ─► nvv4l2decoder ─► nvstreammux ─► nvinfer 
 
 - NVIDIA DeepStream SDK 6.x / 7.x with the [Python bindings (`pyds`)](https://github.com/NVIDIA-AI-IOT/deepstream_python_apps)
 - NVIDIA dGPU or Jetson
-- Python 3 with `numpy`
+- Python packages: `pip install -r requirements.txt`
 
 ### Run
 
@@ -63,3 +63,7 @@ On the first run DeepStream builds a TensorRT engine from `pose_estimation.onnx`
 - [NVIDIA-AI-IOT/deepstream_pose_estimation](https://github.com/NVIDIA-AI-IOT/deepstream_pose_estimation): the original C++ application, post-processing logic and model (MIT License)
 - [NVIDIA-AI-IOT/trt_pose](https://github.com/NVIDIA-AI-IOT/trt_pose): the pose estimation network
 - [NVIDIA DeepStream Python Apps](https://github.com/NVIDIA-AI-IOT/deepstream_python_apps)
+
+## License
+
+[MIT](LICENSE). Portions are derived from NVIDIA's deepstream_pose_estimation, © 2020 NVIDIA Corporation, also MIT licensed.
