@@ -1,3 +1,6 @@
 *.engine
 *.mp4
 *.onnx
+__pycache__/
+*.pyc
+pipeline_graph.dot
