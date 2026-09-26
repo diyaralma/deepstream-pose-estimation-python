@@ -3,7 +3,7 @@ import numpy as np
 from typing import List, Tuple
 import queue as queue_module
 import math
-import ctypes # Pointer işlemleri için gerekli
+import ctypes # Required for pointer operations
 import pyds
 from post_process import refine_peaks, paf_score_graph, find_peaks, assignment, connect_parts, topology
 import pyds
@@ -11,8 +11,8 @@ import gi
 import platform
 gi.require_version('Gst', '1.0')
 from gi.repository import Gst, GLib
-# Platform kontrolü (C++'taki #ifdef PLATFORM_TEGRA karşılığı)
-# Genellikle Jetson cihazlar 'aarch64' mimarisindedir.
+# Platform check (equivalent of #ifdef PLATFORM_TEGRA in C++)
+# Jetson devices typically use the 'aarch64' architecture.
 IS_TEGRA = platform.machine() == 'aarch64'
 # consts
 EPS = 1e-6
@@ -40,10 +40,10 @@ Vec3DFloat = List[List[List[float]]]
 
 def parse_objects_from_tensor_meta(tensor_meta) -> Tuple[Vec2DInt, Vec3DFloat]:
     """
-    C++ parse_objects_from_tensor_meta fonksiyonunun Python uyarlaması.
+    Python port of the C++ parse_objects_from_tensor_meta function.
     """
 
-    # Parametreler
+    # Parameters
     threshold = 0.1
     window_size = 5
     max_num_parts = 20
@@ -51,18 +51,18 @@ def parse_objects_from_tensor_meta(tensor_meta) -> Tuple[Vec2DInt, Vec3DFloat]:
     link_threshold = 0.1
     max_num_objects = 100
 
-    # --- Layer 0: CMAP Data Erişimi ---
+    # --- Layer 0: CMAP data access ---
     # C++: tensor_meta->out_buf_ptrs_host[0]
     layer_info_0 = pyds.get_nvds_LayerInfo(tensor_meta, 0)
     cmap_dims = layer_info_0.inferDims
 
     ptr_0 = pyds.get_ptr(layer_info_0.buffer)
-    # Pointer'ı float array'e cast et
+    # Cast the pointer to a float array
     c_type_pointer_0 = ctypes.cast(ptr_0, ctypes.POINTER(ctypes.c_float))
-    # NumPy array oluştur (kopyalamadan, memory view olarak)
+    # Create a NumPy array (without copying, as a memory view)
     cmap_data = np.ctypeslib.as_array(c_type_pointer_0, shape=(cmap_dims.numElements,))
 
-    # --- Layer 1: PAF Data Erişimi ---
+    # --- Layer 1: PAF data access ---
     # C++: tensor_meta->out_buf_ptrs_host[1]
     layer_info_1 = pyds.get_nvds_LayerInfo(tensor_meta, 1)
     paf_dims = layer_info_1.inferDims
@@ -71,17 +71,17 @@ def parse_objects_from_tensor_meta(tensor_meta) -> Tuple[Vec2DInt, Vec3DFloat]:
     c_type_pointer_1 = ctypes.cast(ptr_1, ctypes.POINTER(ctypes.c_float))
     paf_data = np.ctypeslib.as_array(c_type_pointer_1, shape=(paf_dims.numElements,))
 
-    # --- Algoritma Akışı ---
+    # --- Algorithm flow ---
 
     # 1. Finding peaks
-    # Not: Python versiyonunda counts ve peaks return ediliyor (C++ referans ile aliyordu)
+    # Note: the Python version returns counts and peaks (C++ took them by reference)
     counts, peaks = find_peaks(cmap_data, cmap_dims, threshold, window_size, max_num_parts)
 
     # 2. Non-Maximum Suppression
     refined_peaks = refine_peaks(counts, peaks, cmap_data, cmap_dims, window_size)
 
     # 3. Bipartite graph creation
-    # topology global degisken olarak tanimli olmali
+    # topology must be defined as a global variable
     score_graph = paf_score_graph(paf_data, paf_dims, topology, counts, refined_peaks, num_integral_samples)
 
     # 4. Assignment
@@ -95,15 +95,15 @@ def parse_objects_from_tensor_meta(tensor_meta) -> Tuple[Vec2DInt, Vec3DFloat]:
 
 def create_display_meta(objects, normalized_peaks, frame_meta, frame_width, frame_height):
     """
-    C++ create_display_meta fonksiyonunun Python/pyds çevirisi.
+    Python/pyds port of the C++ create_display_meta function.
     """
-    import pyds  # Fonksiyon icinde import edilebilir veya global olabilir
+    import pyds  # Can be imported inside the function or globally
 
     K = len(topology)
-    # objects listesinin uzunluğu
-    # count = len(objects) # Python for dongusunde buna gerek kalmiyor ama mantik ayni
+    # Length of the objects list
+    # count = len(objects) # Not needed with a Python for loop, but the logic is the same
 
-    # 1. Batch Meta ve İlk Display Meta'yı Al
+    # 1. Get the batch meta and the first display meta
     bmeta = frame_meta.base_meta.batch_meta
     dmeta = pyds.nvds_acquire_display_meta_from_pool(bmeta)
     pyds.nvds_add_display_meta_to_frame(frame_meta, dmeta)
@@ -111,36 +111,36 @@ def create_display_meta(objects, normalized_peaks, frame_meta, frame_width, fram
     for obj in objects:
         C = len(obj)
 
-        # --- PART 1: CIRCLES (Joints / Eklemler) ---
+        # --- PART 1: CIRCLES (Joints) ---
         for j in range(C):
             k = obj[j]
             if k >= 0:
                 peak = normalized_peaks[j][k]
 
-                # Koordinat hesaplama (C++'taki gibi float * width -> int)
-                # Not: C++ kodunda peak[1] X, peak[0] Y olarak kullanılmış.
+                # Coordinate calculation (float * width -> int, as in C++)
+                # Note: the C++ code uses peak[1] as X and peak[0] as Y.
                 x = int(peak[1] * MUXER_OUTPUT_WIDHT)
                 y = int(peak[0] * MUXER_OUTPUT_HEIGHT)
 
-                # Meta limiti kontrolü (DeepStream'de genelde 16'dır)
+                # Meta limit check (usually 16 in DeepStream)
                 if dmeta.num_circles == MAX_ELEMENTS_IN_DISPLAY_META:
                     dmeta = pyds.nvds_acquire_display_meta_from_pool(bmeta)
                     pyds.nvds_add_display_meta_to_frame(frame_meta, dmeta)
 
-                # Daire parametrelerini ayarla
+                # Set circle parameters
                 cparams = dmeta.circle_params[dmeta.num_circles]
                 cparams.xc = x
                 cparams.yc = y
                 cparams.radius = 8
 
-                # Renk: {244, 67, 54, 1}
+                # Color: {244, 67, 54, 1}
                 cparams.circle_color.red = 244
                 cparams.circle_color.green = 67
                 cparams.circle_color.blue = 54
                 cparams.circle_color.alpha = 1.0
 
                 cparams.has_bg_color = 1
-                # Arkaplan Rengi: {0, 255, 0, 1}
+                # Background color: {0, 255, 0, 1}
                 cparams.bg_color.red = 0
                 cparams.bg_color.green = 255
                 cparams.bg_color.blue = 0
@@ -148,7 +148,7 @@ def create_display_meta(objects, normalized_peaks, frame_meta, frame_width, fram
 
                 dmeta.num_circles += 1
 
-        # --- PART 2: LINES (Limbs / Uzuvlar) ---
+        # --- PART 2: LINES (Limbs) ---
         for k in range(K):
             c_a = topology[k][2]
             c_b = topology[k][3]
@@ -162,12 +162,12 @@ def create_display_meta(objects, normalized_peaks, frame_meta, frame_width, fram
                 x1 = int(peak1[1] * MUXER_OUTPUT_WIDHT)
                 y1 = int(peak1[0] * MUXER_OUTPUT_HEIGHT)
 
-                # Meta limiti kontrolü
+                # Meta limit check
                 if dmeta.num_lines == MAX_ELEMENTS_IN_DISPLAY_META:
                     dmeta = pyds.nvds_acquire_display_meta_from_pool(bmeta)
                     pyds.nvds_add_display_meta_to_frame(frame_meta, dmeta)
 
-                # Çizgi parametrelerini ayarla
+                # Set line parameters
                 lparams = dmeta.line_params[dmeta.num_lines]
                 lparams.x1 = x0
                 lparams.y1 = y0
@@ -175,7 +175,7 @@ def create_display_meta(objects, normalized_peaks, frame_meta, frame_width, fram
                 lparams.y2 = y1
                 lparams.line_width = 3
 
-                # Renk: {0, 255, 0, 1}
+                # Color: {0, 255, 0, 1}
                 lparams.line_color.red = 0
                 lparams.line_color.green = 255
                 lparams.line_color.blue = 0
@@ -188,28 +188,28 @@ def create_display_meta(objects, normalized_peaks, frame_meta, frame_width, fram
 
 def pgie_src_pad_buffer_probe(pad, info, u_data):
     """
-    C++ pgie_src_pad_buffer_probe fonksiyonunun Python/pyds çevirisi.
-    PGIE'den gelen metadatayı ayıklar ve çizim parametrelerini günceller.
+    Python/pyds port of the C++ pgie_src_pad_buffer_probe function.
+    Extracts the metadata coming from PGIE and updates the drawing parameters.
     """
 
     gst_buffer = info.get_buffer()
     if not gst_buffer:
-        print("GstBuffer alınamadı")
+        print("Unable to get GstBuffer")
         return Gst.PadProbeReturn.OK
 
-    # Batch Meta'yı buffer hash'i üzerinden alıyoruz
+    # Get the batch meta via the buffer hash
     batch_meta = pyds.gst_buffer_get_nvds_batch_meta(hash(gst_buffer))
 
-    # --- Frame Meta Listesi Üzerinde Dön ---
+    # --- Iterate over the frame meta list ---
     l_frame = batch_meta.frame_meta_list
     while l_frame is not None:
         try:
-            # Note: Cast işlemi C++'taki (NvDsFrameMeta *)l_frame->data ile aynıdır
+            # Note: the cast is equivalent to (NvDsFrameMeta *)l_frame->data in C++
             frame_meta = pyds.NvDsFrameMeta.cast(l_frame.data)
         except StopIteration:
             break
 
-        # --- 1. Frame User Meta Listesi (Frame seviyesindeki tensor verisi için) ---
+        # --- 1. Frame user meta list (for frame-level tensor data) ---
         l_user = frame_meta.frame_user_meta_list
         while l_user is not None:
             try:
@@ -239,7 +239,7 @@ def pgie_src_pad_buffer_probe(pad, info, u_data):
             except StopIteration:
                 break
 
-        # --- 2. Object Meta Listesi (Obje seviyesindeki tensor verisi için) ---
+        # --- 2. Object meta list (for object-level tensor data) ---
         l_obj = frame_meta.obj_meta_list
         while l_obj is not None:
             try:
@@ -247,7 +247,7 @@ def pgie_src_pad_buffer_probe(pad, info, u_data):
             except StopIteration:
                 break
 
-            # Object User Meta Listesi
+            # Object user meta list
             l_user_obj = obj_meta.obj_user_meta_list
             while l_user_obj is not None:
                 try:
@@ -288,14 +288,14 @@ def pgie_src_pad_buffer_probe(pad, info, u_data):
 
 
 def osd_sink_pad_buffer_probe(pad, info, u_data):
-    global frame_number  # Global sayacı içeri al
+    global frame_number  # Use the global counter
 
     gst_buffer = info.get_buffer()
     if not gst_buffer:
-        print("GstBuffer alınamadı")
+        print("Unable to get GstBuffer")
         return Gst.PadProbeReturn.OK
 
-    # Batch meta'yı buffer hash'i üzerinden al
+    # Get the batch meta via the buffer hash
     batch_meta = pyds.gst_buffer_get_nvds_batch_meta(hash(gst_buffer))
 
     l_frame = batch_meta.frame_meta_list
@@ -305,12 +305,12 @@ def osd_sink_pad_buffer_probe(pad, info, u_data):
         except StopIteration:
             break
 
-        # --- C++'taki Object Loop ---
-        # (Orijinal kodda sadece atama yapıp geçiyordu, sadık kalmak için aynısını yapıyoruz)
+        # --- Object loop from the C++ code ---
+        # (The original code only performed the assignment; kept the same for fidelity)
         l_obj = frame_meta.obj_meta_list
         while l_obj is not None:
             try:
-                # Sadece cast işlemi yapılıyor, veri kullanılmıyor
+                # Only the cast is performed; the data is not used
                 obj_meta = pyds.NvDsObjectMeta.cast(l_obj.data)
             except StopIteration:
                 break
@@ -319,39 +319,39 @@ def osd_sink_pad_buffer_probe(pad, info, u_data):
             except StopIteration:
                 break
 
-        # --- Display Meta İşlemleri ---
+        # --- Display meta operations ---
         display_meta = pyds.nvds_acquire_display_meta_from_pool(batch_meta)
 
-        # Text parametrelerini ayarla
+        # Set text parameters
         display_meta.num_labels = 1
         txt_params = display_meta.text_params[0]
 
-        # Metni ayarla: "Frame Number = %d"
+        # Set the text: "Frame Number = %d"
         txt_params.display_text = f"Frame Number =  {frame_number}"
 
-        # Koordinatlar
+        # Coordinates
         txt_params.x_offset = 10
         txt_params.y_offset = 12
 
-        # Font ayarları
+        # Font settings
         txt_params.font_params.font_name = "Mono"
         txt_params.font_params.font_size = 10
 
-        # Font Rengi (Beyaz: 1.0, 1.0, 1.0, 1.0)
+        # Font color (white: 1.0, 1.0, 1.0, 1.0)
         txt_params.font_params.font_color.red = 1.0
         txt_params.font_params.font_color.green = 1.0
         txt_params.font_params.font_color.blue = 1.0
         txt_params.font_params.font_color.alpha = 1.0
 
-        # Arkaplan ayarları
+        # Background settings
         txt_params.set_bg_clr = 1
-        # Arkaplan Rengi (Siyah: 0.0, 0.0, 0.0, 1.0)
+        # Background color (black: 0.0, 0.0, 0.0, 1.0)
         txt_params.text_bg_clr.red = 0.0
         txt_params.text_bg_clr.green = 0.0
         txt_params.text_bg_clr.blue = 0.0
         txt_params.text_bg_clr.alpha = 1.0
 
-        # Hazırlanan display meta'yı frame'e ekle
+        # Attach the prepared display meta to the frame
         pyds.nvds_add_display_meta_to_frame(frame_meta, display_meta)
 
         try:
@@ -359,7 +359,7 @@ def osd_sink_pad_buffer_probe(pad, info, u_data):
         except StopIteration:
             break
 
-    # Frame sayacını artır
+    # Increment the frame counter
     frame_number += 1
 
     return Gst.PadProbeReturn.OK
@@ -367,7 +367,7 @@ def osd_sink_pad_buffer_probe(pad, info, u_data):
 
 def bus_call(bus, msg, loop):
     """
-    C++ bus_call fonksiyonunun Python çevirisi.
+    Python port of the C++ bus_call function.
     """
     t = msg.type
 
@@ -385,8 +385,8 @@ def bus_call(bus, msg, loop):
         if debug:
             sys.stderr.write(f"Error details: {debug}\n")
 
-        # Python'da g_free ve g_error_free çağrısına gerek yoktur,
-        # Garbage Collector halleder.
+        # In Python there is no need to call g_free and g_error_free;
+        # the garbage collector handles it.
 
         loop.quit()
 
@@ -395,28 +395,28 @@ def bus_call(bus, msg, loop):
 
 def link_element_to_tee_src_pad(tee, sinkelem):
     """
-    Tee elementinden dinamik bir pad isteyip sink elemente bağlar.
+    Requests a dynamic pad from the tee element and links it to the sink element.
     """
     ret = False
     tee_src_pad = None
     sinkpad = None
 
-    # C kodundaki: gst_element_request_pad(...) yerine:
-    # Python'da 'get_request_pad' template'i otomatik bulur.
+    # Instead of gst_element_request_pad(...) from the C code:
+    # In Python, 'get_request_pad' finds the template automatically.
     tee_src_pad = tee.get_request_pad("src_%u")
 
     if tee_src_pad is None:
         sys.stderr.write("Failed to get src pad from tee\n")
         return False
 
-    # Sink elementten static pad al
+    # Get the static pad from the sink element
     sinkpad = sinkelem.get_static_pad("sink")
 
     if sinkpad is None:
         sys.stderr.write(f"Failed to get sink pad from '{sinkelem.get_name()}'\n")
         return False
 
-    # Link işlemi
+    # Link
     if tee_src_pad.link(sinkpad) != Gst.PadLinkReturn.OK:
         sys.stderr.write(f"Failed to link '{tee.get_name()}' and '{sinkelem.get_name()}'\n")
         return False
@@ -425,27 +425,27 @@ def link_element_to_tee_src_pad(tee, sinkelem):
     return ret
 
 
-# Sabitler (C kodunda define edilmis olmali, burada tanimliyoruz)
+# Constants (presumably #define'd in the C code; defined here)
 MUXER_OUTPUT_WIDTH = 1920
 MUXER_OUTPUT_HEIGHT = 1080
 MUXER_BATCH_TIMEOUT_USEC = 4000000
 
 
 def main():
-    # GStreamer Başlatma
+    # Initialize GStreamer
     Gst.init(None)
 
-    transform = None  # Sadece Tegra için
+    transform = None  # Tegra only
 
-    # Input argüman kontrolü
+    # Input argument check
     if len(sys.argv) != 3:
         sys.stderr.write(f"Usage: {sys.argv[0]} <filename> <output-path>\n")
         return -1
 
-    # Main Loop Oluşturma
+    # Create the main loop
     loop = GLib.MainLoop()
 
-    # --- Element Oluşturma ---
+    # --- Element creation ---
 
     # Pipeline
     pipeline = Gst.Pipeline.new("deepstream-tensorrt-openpose-pipeline")
@@ -457,7 +457,7 @@ def main():
     h264parser = Gst.ElementFactory.make("h264parse", "h264-parser")
     h264parser1 = Gst.ElementFactory.make("h264parse", "h264-parser1")
 
-    # Decoder (GPU hızlandırmalı)
+    # Decoder (GPU-accelerated)
     decoder = Gst.ElementFactory.make("nvv4l2decoder", "nvv4l2-decoder")
 
     # Stream Muxer
@@ -473,27 +473,27 @@ def main():
     # Converter (NV12 -> RGBA)
     nvvidconv = Gst.ElementFactory.make("nvvideoconvert", "nvvideo-converter")
 
-    # Kuyruk ve Dosya Çıkışı
+    # Queue and file output
     queue = Gst.ElementFactory.make("queue", "queue")
     filesink = Gst.ElementFactory.make("filesink", "filesink")
 
-    # Çıktı dosyası yolu ayarlama
+    # Set the output file path
     # C: strcat(output_path,"Pose_Estimation.mp4");
-    # Python'da string birleştirme daha güvenlidir.
+    # String concatenation is safer in Python.
     output_path_arg = sys.argv[2]
     if not output_path_arg.endswith("/"):
-        # Basit bir path güvenliği, C kodu direkt strcat yapıyor ama biz pythonca yapalım
+        # Simple path safety; the C code uses strcat directly, but do it the Python way
         pass
     final_output_path = output_path_arg + "Pose_Estimation.mp4"
     filesink.set_property("location", final_output_path)
 
-    # Diğer Elementler
+    # Other elements
     nvvideoconvert = Gst.ElementFactory.make("nvvideoconvert", "nvvideo-converter1")
     tee = Gst.ElementFactory.make("tee", "TEE")
     h264encoder = Gst.ElementFactory.make("nvv4l2h264enc", "video-encoder")
     cap_filter = Gst.ElementFactory.make("capsfilter", "enc_caps_filter")
 
-    # Caps oluşturma
+    # Create caps
     caps = Gst.Caps.from_string("video/x-raw(memory:NVMM), format=I420")
     cap_filter.set_property("caps", caps)
 
@@ -502,21 +502,21 @@ def main():
     # OSD (On Screen Display)
     nvosd = Gst.ElementFactory.make("nvdsosd", "nv-onscreendisplay")
 
-    # Sink ve Render Elementleri
+    # Sink and render elements
     if IS_TEGRA:
         transform = Gst.ElementFactory.make("nvegltransform", "nvegl-transform")
 
     nvsink = Gst.ElementFactory.make("nveglglessink", "nvvideo-renderer")
     sink = Gst.ElementFactory.make("fpsdisplaysink", "fps-display")
 
-    # Sink Ayarları
-    # Not: C kodunda bu ayarlar yapılıyor ama sink pipeline'a eklenmiyor (commentli)
-    # Ancak probe callback'ine user_data olarak 'sink' gönderildiği için oluşturmak zorundayız.
+    # Sink settings
+    # Note: the C code sets these but does not add the sink to the pipeline (commented out)
+    # However, it must be created because 'sink' is passed to the probe callback as user_data.
     sink.set_property("text-overlay", False)
     sink.set_property("video-sink", nvsink)
     sink.set_property("sync", False)
 
-    # Element Kontrolü
+    # Element check
     elements_list = [source, h264parser, decoder, pgie, nvvidconv, nvosd, sink,
                      cap_filter, tee, nvvideoconvert, h264encoder, filesink,
                      queue, qtmux, h264parser1]
@@ -529,16 +529,16 @@ def main():
         sys.stderr.write("One tegra element could not be created. Exiting.\n")
         return -1
 
-    # Kaynak dosya ayarı
+    # Source file setting
     source.set_property("location", sys.argv[1])
 
-    # Streammux Ayarları
+    # Streammux settings
     streammux.set_property("width", MUXER_OUTPUT_WIDTH)
     streammux.set_property("height", MUXER_OUTPUT_HEIGHT)
     streammux.set_property("batch-size", 1)
     streammux.set_property("batched-push-timeout", MUXER_BATCH_TIMEOUT_USEC)
 
-    # PGIE Ayarları
+    # PGIE settings
     pgie.set_property("output-tensor-meta", True)
     pgie.set_property("config-file-path", "deepstream_pose_estimation_config.txt")
 
@@ -546,10 +546,10 @@ def main():
     bus = pipeline.get_bus()
     bus_watch_id = bus.add_watch(GLib.PRIORITY_DEFAULT, bus_call, loop)
 
-    # --- Pipeline'a Element Ekleme ---
-    # C++ kodundaki #ifdef ve #else bloklarına göre mantık:
+    # --- Add elements to the pipeline ---
+    # Logic follows the #ifdef and #else blocks in the C++ code:
 
-    # Ortak elementler
+    # Common elements
     pipeline.add(source)
     pipeline.add(h264parser)
     pipeline.add(decoder)
@@ -560,9 +560,9 @@ def main():
 
     if IS_TEGRA:
         pipeline.add(transform)
-        # Tegra'da sink commentliydi, eklemiyoruz.
+        # The sink was commented out on Tegra, so it is not added.
 
-    # Ortak devam
+    # Common elements (continued)
     pipeline.add(tee)
     pipeline.add(nvvideoconvert)
     pipeline.add(h264encoder)
@@ -572,14 +572,14 @@ def main():
     pipeline.add(h264parser1)
     pipeline.add(qtmux)
 
-    # --- Bağlama (Linking) ---
+    # --- Linking ---
 
     # 1. Source -> Parser -> Decoder
     print("Linking Source -> Parser -> Decoder")
     source.link(h264parser)
     h264parser.link(decoder)
 
-    # 2. Decoder -> Streammux (Request Pad ile)
+    # 2. Decoder -> Streammux (via request pad)
     sinkpad = streammux.get_request_pad("sink_0")
     if not sinkpad:
         sys.stderr.write("Streammux request sink pad failed. Exiting.\n")
@@ -595,19 +595,19 @@ def main():
         return -1
 
     # 3. Streammux -> PGIE -> NVVidConv -> NVOSD -> ...
-    # C++ kodundaki aktif blok (filesink yolu):
+    # Active block in the C++ code (filesink path):
     # stream -> pgie -> nvvidconv -> nvosd -> tee
 
     print("Linking Streammux chain...")
-    # Tegra'da transform var mıydı? C kodunda:
-    # Tegra: streammux, pgie, nvvidconv, nvosd, tee (transform araya girmiyor burada)
+    # Was transform used on Tegra? In the C code:
+    # Tegra: streammux, pgie, nvvidconv, nvosd, tee (transform is not in the chain here)
     # else: streammux, pgie, nvvidconv, nvosd, tee
-    # Transform sadece display sink açıksa kullanılır, burada file sink var.
-    # Ancak C kodunda `transform` bin'e eklendi (Tegra ise). Ama link zincirinde #if 0 içinde kalmış gibi.
-    # En alttaki aktif #else bloğuna bakarsak:
+    # Transform is only used when the display sink is enabled; here a file sink is used.
+    # The C code does add `transform` to the bin (on Tegra), but in the link chain it appears to be inside #if 0.
+    # Looking at the active #else block at the bottom:
 
     # if (!gst_element_link_many(streammux, pgie, nvvidconv, nvosd, tee, NULL))
-    # Tegra bloğu için de aynısı var. Transform kullanılmıyor linklemede.
+    # The Tegra block is the same. Transform is not used in linking.
 
     streammux.link(pgie)
     pgie.link(nvvidconv)
@@ -615,12 +615,12 @@ def main():
     nvosd.link(tee)
 
     # 4. Tee -> Queue -> ... -> FileSink
-    # link_element_to_tee_src_pad fonksiyonunu çağırıyoruz
+    # Call link_element_to_tee_src_pad
     if not link_element_to_tee_src_pad(tee, queue):
         sys.stderr.write("Could not link tee to queue/nvvideoconvert\n")
         return -1
 
-    # Kuyruktan sonraki zincir
+    # Chain after the queue
     # queue -> nvvideoconvert -> cap_filter -> h264encoder -> h264parser1 -> qtmux -> filesink
     queue.link(nvvideoconvert)
     nvvideoconvert.link(cap_filter)
@@ -629,15 +629,15 @@ def main():
     h264parser1.link(qtmux)
     qtmux.link(filesink)
 
-    # --- Probe Ekleme ---
+    # --- Add probes ---
 
     # PGIE Src Pad Probe
     pgie_src_pad = pgie.get_static_pad("src")
     if not pgie_src_pad:
         sys.stdout.write("Unable to get pgie src pad\n")
     else:
-        # Not: sink pointer'ı user_data olarak geçiliyor.
-        # Python'da sink objesini geçiyoruz.
+        # Note: the sink pointer is passed as user_data.
+        # In Python, the sink object is passed.
         pgie_src_pad.add_probe(Gst.PadProbeType.BUFFER, pgie_src_pad_buffer_probe, sink)
 
     # OSD Sink Pad Probe
@@ -647,7 +647,7 @@ def main():
     else:
         osd_sink_pad.add_probe(Gst.PadProbeType.BUFFER, osd_sink_pad_buffer_probe, sink)
 
-    # --- Çalıştırma ---
+    # --- Run ---
     sys.stdout.write(f"Now playing: {sys.argv[1]}\n")
     pipeline.set_state(Gst.State.PLAYING)
 
@@ -657,13 +657,13 @@ def main():
     except:
         pass
 
-    # --- Kapanış ---
+    # --- Shutdown ---
     sys.stdout.write("Returned, stopping playback\n")
     pipeline.set_state(Gst.State.NULL)
     sys.stdout.write("Deleting pipeline\n")
 
-    # Python'da unref işlemleri GC tarafından otomatik yapılır ama
-    # GLib loop için quit çağırmak iyidir.
+    # In Python, unref is handled automatically by the GC, but
+    # calling quit on the GLib loop is good practice.
 
     return 0
 

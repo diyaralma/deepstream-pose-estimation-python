@@ -14,7 +14,7 @@ VIDEO_HEIGHT = 1080
 PROCESS_INTERVAL = 1
 MAX_LIMB_DISTANCE = VIDEO_WIDTH * 0.40
 
-# Body-25 skeleton yapısı
+# Body-25 skeleton structure
 POSE_PAIRS = [
     (1, 2), (1, 5), (2, 3), (3, 4), (5, 6), (6, 7),
     (1, 8), (8, 9), (9, 10), (10, 11), (8, 12),
@@ -60,18 +60,18 @@ def parse_body_pose_smooth(heatmap_layer, layer_dims):
     return detected_body_parts
 
 
-# ---- Bus Call (Hata Yakalama) ----
+# ---- Bus Call (error handling) ----
 def bus_call(bus, message, loop):
     t = message.type
     if t == Gst.MessageType.EOS:
-        sys.stdout.write("\nVideo Bitti (End of Stream)\n")
+        sys.stdout.write("\nVideo finished (End of Stream)\n")
         loop.quit()
     elif t == Gst.MessageType.WARNING:
         err, debug = message.parse_warning()
-        sys.stderr.write("Uyarı: %s: %s\n" % (err, debug))
+        sys.stderr.write("Warning: %s: %s\n" % (err, debug))
     elif t == Gst.MessageType.ERROR:
         err, debug = message.parse_error()
-        sys.stderr.write("HATA: %s: %s\n" % (err, debug))
+        sys.stderr.write("ERROR: %s: %s\n" % (err, debug))
         loop.quit()
     return True
 
@@ -137,27 +137,27 @@ def pgie_src_pad_buffer_probe(pad, info, u_data):
     return Gst.PadProbeReturn.OK
 
 
-# ---- YENİ: Decodebin Callback ----
-# Bu fonksiyon otomatik çözücüden çıkan videoyu yakalar ve streammux'a bağlar
+# ---- NEW: Decodebin callback ----
+# Catches the video output of the automatic decoder and links it to streammux
 def cb_decodebin_newpad(decodebin, pad, streammux):
     caps = pad.get_current_caps()
     if not caps: return
     name = caps.to_string()
-    # Eğer gelen veri video ise
+    # If the incoming data is video
     if "video" in name:
         sinkpad = streammux.get_request_pad("sink_0")
         if not sinkpad.is_linked():
-            # Bağlantıyı dene
+            # Try to link
             res = pad.link(sinkpad)
             if res == Gst.PadLinkReturn.OK:
-                print("Decodebin başarıyla Streammux'a bağlandı.")
+                print("Decodebin successfully linked to Streammux.")
             else:
-                print(f"Decodebin bağlantı hatası: {res}")
+                print(f"Decodebin link error: {res}")
 
 
 def main(args):
     if len(args) < 2:
-        print("Kullanım: python3 main_pose.py <video.mp4>")
+        print("Usage: python3 main_pose.py <video.mp4>")
         return
     input_file = args[1]
     if input_file.startswith("file://"):
@@ -166,10 +166,10 @@ def main(args):
     Gst.init(None)
     pipeline = Gst.Pipeline()
 
-    # --- ELEMENTLER ---
+    # --- ELEMENTS ---
     source = Gst.ElementFactory.make("filesrc", "file-source")
 
-    # DEĞİŞİKLİK: qtdemux, parser ve decoder yerine tek bir 'decodebin'
+    # CHANGE: a single 'decodebin' instead of qtdemux, parser and decoder
     decodebin = Gst.ElementFactory.make("decodebin", "decode-bin")
 
     streammux = Gst.ElementFactory.make("nvstreammux", "stream-muxer")
@@ -179,10 +179,10 @@ def main(args):
     sink = Gst.ElementFactory.make("nveglglessink", "nvvideo-renderer")
 
     if not all([source, decodebin, streammux, pgie, nvvidconv, nvosd, sink]):
-        print("Elementler oluşturulamadı")
+        print("Failed to create elements")
         return
 
-    # --- AYARLAR ---
+    # --- SETTINGS ---
     source.set_property("location", input_file)
     streammux.set_property("width", VIDEO_WIDTH)
     streammux.set_property("height", VIDEO_HEIGHT)
@@ -192,15 +192,15 @@ def main(args):
     sink.set_property("sync", 0)
     sink.set_property("qos", 0)
 
-    # --- PIPELINE'A EKLEME ---
-    # Not: h264parse ve nvv4l2decoder artık yok, decodebin bunların işini yapacak
+    # --- ADD TO PIPELINE ---
+    # Note: h264parse and nvv4l2decoder are no longer used; decodebin does their job
     for e in [source, decodebin, streammux, pgie, nvvidconv, nvosd, sink]:
         pipeline.add(e)
 
-    # --- BAĞLANTILAR ---
+    # --- LINKS ---
     source.link(decodebin)
 
-    # Decodebin dinamik bir elementtir, pad oluşunca bağlanacak:
+    # Decodebin is a dynamic element; it is linked once its pad is created:
     decodebin.connect("pad-added", cb_decodebin_newpad, streammux)
 
     streammux.link(pgie)
@@ -212,7 +212,7 @@ def main(args):
     pgie_src_pad = pgie.get_static_pad("src")
     pgie_src_pad.add_probe(Gst.PadProbeType.BUFFER, pgie_src_pad_buffer_probe, 0)
 
-    # --- LOOP VE HATA İZLEME ---
+    # --- LOOP AND ERROR MONITORING ---
     loop = GLib.MainLoop()
     bus = pipeline.get_bus()
     bus.add_signal_watch()
@@ -220,7 +220,7 @@ def main(args):
 
     pipeline.set_state(Gst.State.PLAYING)
     try:
-        print(f"Pipeline çalışıyor: {input_file}")
+        print(f"Pipeline running: {input_file}")
         loop.run()
     except Exception as e:
         print(e)

@@ -2,7 +2,7 @@ import math
 from typing import List, Tuple, Any
 
 # Type aliases for clarity
-# HATA BURADAYDI: Parametre alabilir hale getirmek yerine düzeltiyoruz.
+# The bug was here: fixed instead of making the aliases parameterizable.
 Vec1D = List[float]
 Vec2D = List[List[float]]
 Vec3D = List[List[List[float]]]
@@ -101,7 +101,7 @@ class CoverTable:
 
 
 # Helper method to subtract the minimum row from cost_graph
-# DUZELTME: 'Vec2D[float]' yerine sadece 'Vec2D' kullanildi
+# FIX: use plain 'Vec2D' instead of 'Vec2D[float]'
 def subtract_minimum_row(cost_graph: Vec2D, nrows: int, ncols: int) -> None:
     for i in range(nrows):
         # Iterate the find the minimum
@@ -117,7 +117,7 @@ def subtract_minimum_row(cost_graph: Vec2D, nrows: int, ncols: int) -> None:
 
 
 # Helper method to subtract the minimum col from cost_graph
-# DUZELTME: 'Vec2D[float]' yerine sadece 'Vec2D'
+# FIX: plain 'Vec2D' instead of 'Vec2D[float]'
 def subtract_minimum_column(cost_graph: Vec2D, nrows: int, ncols: int) -> None:
     for j in range(ncols):
         # Iterate and find the minimum

@@ -9,7 +9,7 @@ Multi-person human pose estimation on video with **NVIDIA DeepStream**. This is 
 
 The model runs as a TensorRT engine inside `nvinfer`. Its raw output tensors are read in a pad probe and decoded into skeletons in Python. The skeletons are drawn with DeepStream display metadata, shown on screen and saved to MP4.
 
-> For the live, multi-stream (RTSP) version of this pipeline, see [pose-estimation-dynamic-source-handler](https://github.com/diyaralma/pose-estimation-dynamic-source-handler).
+> For the live, multi-stream (RTSP) version of this pipeline, see [deepstream-multistream-pose-estimation](https://github.com/diyaralma/deepstream-multistream-pose-estimation).
 
 ## How it works
 
@@ -49,8 +49,8 @@ filesrc ─► h264parse ─► nvv4l2decoder ─► nvstreammux ─► nvinfer 
 ### Run
 
 ```bash
-git clone https://github.com/diyaralma/pose-estimation.git
-cd pose-estimation
+git clone https://github.com/diyaralma/deepstream-pose-estimation-python.git
+cd deepstream-pose-estimation-python
 
 # <input.h264> is a raw H.264 elementary stream; the output is written to <output-dir>/Pose_Estimation.mp4
 python3 deepstream_pose_estimation_app.py <input.h264> <output-dir>/
